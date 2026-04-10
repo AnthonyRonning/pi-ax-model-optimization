@@ -5,6 +5,18 @@ Related: `packages/coding-agent/docs/small-model-agent-decisions.md`
 
 This document turns the architecture decisions into a concrete implementation plan after investigating the relevant pi and Ax subsystems.
 
+## Working names
+
+- **Project / fork name:** `PromptForge`
+- **Internal act syntax name:** `Text Act Format`
+
+Naming intent:
+
+- `PromptForge` is the umbrella identity for the project
+- `Text Act Format` is the descriptive implementation term for the text-native act layer
+
+This keeps the docs honest: the project is still fundamentally a **pi fork** with **DSPy-style prompt middleware** and **GEPA/Ax optimization**, but day-to-day implementation does not need to repeatedly say the full stack description everywhere.
+
 ## Scope
 
 Build a small-model-friendly coding-agent mode that:
@@ -60,7 +72,7 @@ This means the fork does **not** need a new runtime loop. It needs a translation
 - `transformContext`
 - `onPayload`
 
-That is the natural place to insert a text-protocol adapter without rewriting the rest of pi.
+That is the natural place to insert a Text Act Format adapter without rewriting the rest of pi.
 
 ### 3. `before_provider_request` is too late for the core protocol swap
 
@@ -191,7 +203,7 @@ For this project, Ax is a reference dependency/workspace neighbor, not the main 
    - existing pi system prompt + project/user customization
    - still the semantic source of truth
 
-2. **Text protocol adapter**
+2. **Text Act Format adapter**
    - renders model-facing prompt instructions
    - renders tools in text form
    - defines explicit acts like `message`, `tool_call`, `ask_user`, `done`, `blocked`
@@ -276,7 +288,7 @@ If the model does not emit an explicit act, v1 should not guess one on its behal
 ### Primary
 
 - `packages/coding-agent/src/core/sdk.ts`
-  - gate or inject the text-protocol adapter into the agent's `streamFn`
+  - gate or inject the Text Act Format adapter into the agent's `streamFn`
 
 - `packages/coding-agent/src/core/agent-session.ts`
   - load/apply model-specific adapter artifacts
@@ -291,7 +303,7 @@ If the model does not emit an explicit act, v1 should not guess one on its behal
 
 Recommended new area:
 
-- `packages/coding-agent/src/core/small-model-protocol/`
+- `packages/coding-agent/src/core/text-act-format/`
 
 Likely files:
 
@@ -554,7 +566,7 @@ Recommendation:
 When coding starts, the first concrete tasks should be:
 
 1. define the v1 act grammar
-2. add the adapter module scaffold under `packages/coding-agent/src/core/small-model-protocol/`
+2. add the adapter module scaffold under `packages/coding-agent/src/core/text-act-format/`
 3. wire the adapter into `packages/coding-agent/src/core/sdk.ts`
 4. create parser/lowering unit tests
 5. define the feedback-capture queue format
@@ -565,7 +577,7 @@ When coding starts, the first concrete tasks should be:
 The investigation supports the original thesis:
 
 - pi already has the right runtime substrate
-- the main missing piece is a text-first prompt/parse adapter
+- the main missing piece is a text-first Text Act Format adapter
 - Ax already has the GEPA and agent optimization machinery we need
 
 So the plan is not to build a new agent runtime.  

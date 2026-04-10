@@ -13,6 +13,9 @@ import type { ResourceLoader } from "./resource-loader.js";
 import { DefaultResourceLoader } from "./resource-loader.js";
 import { getDefaultSessionDir, SessionManager } from "./session-manager.js";
 import { SettingsManager } from "./settings-manager.js";
+import { streamTextActFormat } from "./text-act-format/adapter.js";
+import { loadTextActFormatArtifact } from "./text-act-format/artifacts.js";
+import { TEXT_ACT_FORMAT_ENV_VAR } from "./text-act-format/types.js";
 import { time } from "./timings.js";
 import {
 	allTools,
@@ -129,6 +132,23 @@ export {
 
 function getDefaultAgentDir(): string {
 	return getAgentDir();
+}
+
+function getTextActFormatEnvOverride(): boolean | undefined {
+	const value = process.env[TEXT_ACT_FORMAT_ENV_VAR]?.trim().toLowerCase();
+	if (!value) {
+		return undefined;
+	}
+
+	if (value === "1" || value === "true" || value === "yes" || value === "on") {
+		return true;
+	}
+
+	if (value === "0" || value === "false" || value === "no" || value === "off") {
+		return false;
+	}
+
+	return undefined;
 }
 
 /**
@@ -301,11 +321,37 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			if (!auth.ok) {
 				throw new Error(auth.error);
 			}
-			return streamSimple(model, context, {
-				...options,
-				apiKey: auth.apiKey,
-				headers: auth.headers || options?.headers ? { ...auth.headers, ...options?.headers } : undefined,
-			});
+
+			const streamProvider = (
+				providerModel: Model<any>,
+				providerContext: typeof context,
+				providerOptions = options,
+			) =>
+				streamSimple(providerModel, providerContext, {
+					...providerOptions,
+					apiKey: auth.apiKey,
+					headers:
+						auth.headers || providerOptions?.headers
+							? { ...auth.headers, ...providerOptions?.headers }
+							: undefined,
+				});
+
+			const textActFormatEnvOverride = getTextActFormatEnvOverride();
+			const textActFormatArtifact =
+				textActFormatEnvOverride === false
+					? undefined
+					: loadTextActFormatArtifact({
+							cwd,
+							agentDir,
+							model,
+						});
+			const useTextActFormat = textActFormatEnvOverride ?? textActFormatArtifact !== undefined;
+
+			if (useTextActFormat) {
+				return streamTextActFormat(model, context, options, streamProvider, textActFormatArtifact?.artifact);
+			}
+
+			return streamProvider(model, context, options);
 		},
 		onPayload: async (payload, _model) => {
 			const runner = extensionRunnerRef.current;

@@ -1,0 +1,43 @@
+{
+	"name": "@mariozechner/pi-coding-agent-optimizer",
+	"version": "0.66.1",
+	"description": "Ax/GEPA optimization helpers for PromptForge Text Act Format artifacts",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"clean": "shx rm -rf dist",
+		"build": "tsgo -p tsconfig.build.json",
+		"dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+		"optimize:live": "tsx src/live-optimize.ts",
+		"test": "vitest --run",
+		"prepublishOnly": "npm run clean && npm run build"
+	},
+	"dependencies": {
+		"@ax-llm/ax": "^19.0.42"
+	},
+	"devDependencies": {
+		"@types/node": "^24.3.0",
+		"typescript": "^5.7.3",
+		"vitest": "^3.2.4"
+	},
+	"keywords": [
+		"ax",
+		"gepa",
+		"prompt-optimization",
+		"coding-agent"
+	],
+	"author": "Mario Zechner",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/badlogic/pi-mono.git",
+		"directory": "packages/coding-agent-optimizer"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	}
+}

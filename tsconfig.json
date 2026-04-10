@@ -13,6 +13,8 @@
 			"@mariozechner/pi-coding-agent": ["./packages/coding-agent/src/index.ts"],
 			"@mariozechner/pi-coding-agent/hooks": ["./packages/coding-agent/src/core/hooks/index.ts"],
 			"@mariozechner/pi-coding-agent/*": ["./packages/coding-agent/src/*"],
+			"@mariozechner/pi-coding-agent-optimizer": ["./packages/coding-agent-optimizer/src/index.ts"],
+			"@mariozechner/pi-coding-agent-optimizer/*": ["./packages/coding-agent-optimizer/src/*"],
 			"@sinclair/typebox": ["./node_modules/@sinclair/typebox"],
 			"@mariozechner/pi-mom": ["./packages/mom/src/index.ts"],
 			"@mariozechner/pi-mom/*": ["./packages/mom/src/*"],

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "description": "PromptForge Text Act Format adapter for coding-agent turns.",
+  "instructions": [
+    "Emit explicit Text Act Format blocks instead of describing intended actions in prose. Use <tool_call> whenever the task requires inspecting or mutating repo state. Use <ask_user> when required information is missing and <blocked> when the tool surface cannot satisfy the task. Treat every tool result—especially error results—as authoritative ground truth: if a tool returns an error (e.g., file not found), do not attempt speculative workarounds or additional tool calls to self-recover; instead, emit <ask_user> to request the correct information from the user. Never substitute a failed path with a guessed alternative path or directory listing without explicit user guidance."
+  ],
+  "optimizer": {
+    "kind": "ax-gepa",
+    "createdAt": "2026-04-10T19:49:07.376Z",
+    "targetId": "text-act-format.instructions",
+    "bestScore": 0.8666666666666666,
+    "optimizerType": "GEPA",
+    "optimizationTime": 177681,
+    "totalRounds": 4,
+    "converged": true
+  },
+  "paretoFront": [
+    {
+      "instruction": "Emit explicit Text Act Format blocks instead of describing intended actions in prose. Use <tool_call> whenever the task requires inspecting or mutating repo state. Use <ask_user> when required information is missing and <blocked> when the tool surface cannot satisfy the task. Treat every tool result—especially error results—as authoritative ground truth: if a tool returns an error (e.g., file not found), do not attempt speculative workarounds or additional tool calls to self-recover; instead, emit <ask_user> to request the correct information from the user. Never substitute a failed path with a guessed alternative path or directory listing without explicit user guidance.",
+      "scores": {
+        "actParsing": 1,
+        "toolSelection": 1,
+        "completion": 0.6666666666666666,
+        "toolGrounding": 0.6666666666666666,
+        "failureAvoidance": 1
+      },
+      "dominatedSolutions": 1
+    },
+    {
+      "instruction": "Emit explicit Text Act Format blocks instead of describing intended actions in prose. Before invoking any tool, verify that the available tools actually cover the required capability (e.g., writing or editing a file requires a write/edit tool, not just a read tool); if no suitable tool exists for the task, immediately emit a `<blocked>` act explaining which capability is missing—never fall back to a tangentially related tool as a substitute. Use `<tool_call>` only when an available tool directly satisfies the task requirement. Use `<ask_user>` when required information is missing. Treat every tool result—especially error results—as authoritative ground truth: do not attempt speculative workarounds or additional tool calls to self-recover; instead, emit `<ask_user>` to request correct information. When answering from a tool result, respond directly and concisely in a `<message>` without hedging or restating the question.",
+      "scores": {
+        "actParsing": 1,
+        "toolSelection": 1,
+        "completion": 0.6666666666666666,
+        "toolGrounding": 0.6666666666666666,
+        "failureAvoidance": 1
+      },
+      "dominatedSolutions": 1
+    }
+  ]
+}

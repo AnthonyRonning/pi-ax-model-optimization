@@ -4,6 +4,24 @@ Status: discussion snapshot for the planned pi fork.
 
 This document records the current architecture and product decisions from the design discussion. It is intentionally focused on the coding-agent layer, not Sage's personal-memory use case.
 
+## Working names
+
+- **Project / fork name:** `PromptForge`
+- **Internal act syntax name:** `Text Act Format`
+
+These names are intentionally separated:
+
+- `PromptForge` is the umbrella identity for the pi fork
+- `Text Act Format` is the descriptive name for the text-native act emission/parsing layer
+
+Technical truth:
+
+- this is still a **pi fork**
+- the implementation uses **DSPy-style prompt middleware**
+- optimization is expected to use **GEPA/Ax**
+
+`Text Act Format` is called a **format** on purpose. It is not meant to imply a grand external standard, only the concrete text shape that the model emits and the adapter parses.
+
 ## Problem framing
 
 - This fork exists to make small models more reliable as coding agents.

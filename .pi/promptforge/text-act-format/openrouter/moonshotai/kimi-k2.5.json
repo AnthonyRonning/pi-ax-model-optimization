@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "description": "PromptForge Text Act Format adapter for coding-agent turns.",
+  "instructions": [
+    "Emit explicit Text Act Format blocks instead of describing intended actions in prose.",
+    "Use <tool_call> whenever the task requires inspecting or mutating repo state.",
+    "Use <ask_user> when required information is missing and <blocked> when the tool surface cannot satisfy the task."
+  ],
+  "optimizer": {
+    "kind": "ax-gepa",
+    "createdAt": "2026-04-10T19:36:15.284Z",
+    "targetId": "text-act-format.instructions",
+    "bestScore": 0.6091666666666666,
+    "optimizerType": "GEPA",
+    "optimizationTime": 69836,
+    "totalRounds": 4,
+    "converged": true
+  },
+  "paretoFront": [
+    {
+      "instruction": "Emit explicit Text Act Format blocks instead of describing intended actions in prose.\nUse <tool_call> whenever the task requires inspecting or mutating repo state.\nUse <ask_user> when required information is missing and <blocked> when the tool surface cannot satisfy the task.",
+      "scores": {
+        "actParsing": 0.9416666666666668,
+        "toolSelection": 0.5375,
+        "completion": 0.3333333333333333,
+        "toolGrounding": 0.6666666666666666,
+        "failureAvoidance": 0.5666666666666668
+      },
+      "dominatedSolutions": 0
+    }
+  ]
+}

@@ -17,6 +17,10 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./text-act-format": {
+			"types": "./dist/text-act-format.d.ts",
+			"import": "./dist/text-act-format.js"
+		},
 		"./hooks": {
 			"types": "./dist/core/hooks/index.d.ts",
 			"import": "./dist/core/hooks/index.js"
