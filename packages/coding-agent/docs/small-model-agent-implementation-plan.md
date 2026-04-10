@@ -62,7 +62,29 @@ This means the fork does **not** need a new runtime loop. It needs a translation
 
 That is the natural place to insert a text-protocol adapter without rewriting the rest of pi.
 
-### 3. pi already supports custom `streamSimple`
+### 3. `before_provider_request` is too late for the core protocol swap
+
+Pi's `before_provider_request` extension hook is useful for payload mutation and debugging, but it runs **after** provider serialization.
+
+That means it is not the primary seam for this project because we need to own:
+
+- outbound tool rendering
+- outbound protocol formatting
+- response parsing back into pi events
+
+So the core implementation should happen at the `streamFn` / `streamSimple` layer, not at payload-mutation time.
+
+### 4. pi already provides intent, tools, and transcript at the stream seam
+
+At the stream seam we already get:
+
+- `context.systemPrompt`
+- `context.tools`
+- `context.messages`
+
+That means the adapter can work from first-class runtime data and does **not** need to scrape tool definitions back out of the system prompt text.
+
+### 5. pi already supports custom `streamSimple`
 
 `packages/coding-agent/src/core/model-registry.ts` and `packages/coding-agent/docs/custom-provider.md` show that pi is already designed for provider-level `streamSimple` customization.
 
@@ -73,7 +95,7 @@ This gives us two implementation options:
 
 Both are viable.
 
-### 4. Append-only sessions already match the desired model
+### 6. Append-only sessions already match the desired model
 
 `packages/coding-agent/src/core/session-manager.ts` and `packages/coding-agent/src/core/compaction/compaction.ts` confirm:
 
@@ -84,7 +106,7 @@ Both are viable.
 
 This matches the desired coding-agent behavior and should be preserved.
 
-### 5. `ask_user` and `done` do not need to be real pi tools in v1
+### 7. `ask_user` and `done` do not need to be real pi tools in v1
 
 Because the adapter is responsible for lowering model output back into pi semantics:
 
@@ -93,7 +115,17 @@ Because the adapter is responsible for lowering model output back into pi semant
 
 This keeps v1 simpler and lets pi's existing session behavior do the rest.
 
-### 6. Runtime recovery should stop at malformed explicit intent
+### 8. pi has no native internal self-continue turn, and that is fine
+
+Pi naturally continues because of:
+
+- emitted `toolCall` blocks that create tool-result turns
+- queued steering messages
+- queued follow-up messages
+
+It does not have a native "take another internal turn for no reason" mechanism, and v1 should not add one just to paper over missing model intent.
+
+### 9. Runtime recovery should stop at malformed explicit intent
 
 There is an important boundary for v1:
 
@@ -106,6 +138,50 @@ That means:
 - missing explicit intent is a prompting/eval/GEPA problem
 
 This keeps runtime behavior honest and avoids inventing agent actions that were never actually emitted.
+
+## Working environment and local references
+
+### Nix dev shell
+
+The repo now includes `flake.nix` and `flake.lock` for a reproducible dev shell.
+
+Fresh sessions should prefer:
+
+```bash
+nix develop
+```
+
+Inside the shell, the intended bootstrap/validation flow is:
+
+```bash
+npm install
+npm run build
+```
+
+The shell also wires up:
+
+- `nodejs_22`
+- `bun`
+- `python3`
+- `ripgrep`
+- `tmux`
+- compiler/system libs needed by the repo
+- local `node_modules/.bin` on `PATH`
+
+### Local Ax checkout
+
+There is also a local Ax checkout available at:
+
+`/Users/tony/Dev/ThirdParties/ax`
+
+Use it as the reference implementation for:
+
+- `AxGEPA`
+- `AxAgent.optimize(...)`
+- `applyOptimization(...)`
+- recursive/agent optimization examples
+
+For this project, Ax is a reference dependency/workspace neighbor, not the main repo being edited unless explicitly needed.
 
 ## Recommended v1 architecture
 

@@ -90,6 +90,7 @@ Decision: GEPA should optimize the translation/adaptation layers, not replace ca
 - If the model emits no explicit tool-use attempt at all, the runtime should **not** invent one.
 - Missing tool intent is treated as a model/protocol failure, not as a runtime invitation to guess.
 - In that case, pi should just treat the output as ordinary assistant output / stop behavior unless some explicit parsed act says otherwise.
+- Pi's natural continuation mechanism should stay intact: normal continuation comes from emitted tool calls and queued user messages, not from synthetic extra internal turns invented by the fork.
 
 ## Stop semantics
 
@@ -170,6 +171,7 @@ Decision: pi keeps the session substrate; DSPy/DSRS/GEPA operate as per-step mid
 - It should not replace pi's session and loop architecture.
 - Pi should own the transcript, resumability, interruptions, and compaction behavior.
 - DSPy middleware should shape each step, not become the primary session substrate.
+- There should be no special runtime-only "self continue" turn when the model failed to emit an act. That is a GEPA/eval issue, not a loop invention issue.
 
 ## Working success definition
 
