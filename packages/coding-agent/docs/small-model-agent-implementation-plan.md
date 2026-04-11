@@ -1,6 +1,6 @@
 # Small-Model Agent Implementation Plan
 
-Status: draft  
+Status: implementation snapshot after the initial PromptForge runtime + optimizer landing  
 Related: `packages/coding-agent/docs/small-model-agent-decisions.md`
 
 This document turns the architecture decisions into a concrete implementation plan after investigating the relevant pi and Ax subsystems.
@@ -27,6 +27,18 @@ Build a small-model-friendly coding-agent mode that:
 - uses model-specific GEPA artifacts to improve intent realization
 
 This plan is for a pi fork, not a greenfield agent.
+
+## Current status
+
+The initial planned architecture is now implemented in this branch:
+
+- the runtime adapter is wired into `packages/coding-agent/src/core/sdk.ts`
+- Text Act Format modules exist under `packages/coding-agent/src/core/text-act-format/`
+- model-scoped artifacts auto-enable the adapter when present
+- the optimizer package exists at `packages/coding-agent-optimizer/`
+- live GEPA runs can emit per-model artifacts, including multi-model sequential runs
+
+What remains is mostly refinement work: better eval coverage, better reporting, better feedback capture UX, and long-session prompt/render tuning.
 
 ## What was investigated
 
@@ -222,23 +234,23 @@ For this project, Ax is a reference dependency/workspace neighbor, not the main 
 
 ## Recommended technical approach
 
-### Recommendation: start with a global adapter wrapper, not provider duplication
+### Implemented choice: global adapter wrapper, not provider duplication
 
-For v1, the cleanest path is:
+V1 uses the following path:
 
 - keep the user's selected model as-is
 - wrap the call path in `packages/coding-agent/src/core/sdk.ts`
 - let the adapter call the underlying provider with text-only context
 - parse the response back into standard pi events
 
-Why this is the best first move:
+Why this was the right first move:
 
 - no model duplication
 - no extra provider names
 - the optimization key stays the real selected model
 - we can still externalize later through `registerProvider()` if we want
 
-### Alternative: internal custom provider registration
+### Deferred alternative: internal custom provider registration
 
 This is still a viable option, but better as a second step if we want the protocol layer to become independently pluggable.
 
@@ -288,31 +300,31 @@ If the model does not emit an explicit act, v1 should not guess one on its behal
 ### Primary
 
 - `packages/coding-agent/src/core/sdk.ts`
-  - gate or inject the Text Act Format adapter into the agent's `streamFn`
-
-- `packages/coding-agent/src/core/agent-session.ts`
-  - load/apply model-specific adapter artifacts
-  - decide how adapter mode is enabled
-  - continue to use pi's existing base prompt rebuild
+  - wraps the existing `streamFn`
+  - loads model-scoped artifacts
+  - auto-enables Text Act Format when an artifact exists
+  - supports explicit env override via `PI_CODING_AGENT_TEXT_ACT_FORMAT`
 
 - `packages/coding-agent/src/core/system-prompt.ts`
-  - possibly extract a cleaner canonical-intent representation later
-  - v1 can likely use the existing built prompt as the source intent
+  - still acts as the canonical intent source
+  - no special restructuring was required for the first working version
 
-### New modules to add
+### Implemented runtime modules
 
-Recommended new area:
+Implemented area:
 
 - `packages/coding-agent/src/core/text-act-format/`
 
-Likely files:
+Current files:
 
 - `adapter.ts` — main wrapper around underlying stream call
 - `render.ts` — render canonical intent + tools + replay/tool results into model-facing protocol
-- `parser.ts` — incremental streamed act parser
-- `lowering.ts` — convert parsed acts into pi `AssistantMessageEvent`s / final `AssistantMessage`
+- `parser.ts` — parse explicit acts and recover malformed explicit tool calls
 - `artifacts.ts` — load model-specific GEPA artifacts
+- `feedback.ts` — append JSONL feedback records for later GEPA curation
 - `types.ts` — act definitions, adapter config, parse results
+
+Lowering ended up living inside `adapter.ts` instead of a separate `lowering.ts`.
 
 ### Existing code that should stay mostly unchanged
 
@@ -325,11 +337,11 @@ The goal is to avoid destabilizing pi's core runtime.
 
 ## Offline optimization/eval plan
 
-### Recommendation: separate workspace package
+### Implemented: separate workspace package
 
 Do **not** cram Ax/GEPA code directly into the runtime package first.
 
-Recommended new package:
+Implemented package:
 
 - `packages/coding-agent-optimizer/`
 
@@ -354,11 +366,11 @@ This keeps runtime and offline experimentation separate.
 
 In addition to curated train/validation datasets, add a lightweight feedback-capture path for bad live traces.
 
-Recommendation:
+Implemented helper path:
 
-- add a command or extension command that snapshots a bad run into a review queue
-- store it as JSONL or similar append-only review data
-- do **not** write directly into the final GEPA trainset
+- helpers can append a bad run into `.pi/promptforge/feedback/text-act-format.jsonl`
+- records are JSONL review data, not direct trainset rows
+- a first-class command/UI flow for capturing these traces is still missing
 
 Suggested payload:
 
@@ -426,6 +438,8 @@ Ax already has patterns close to this in `AxAgent.optimize()` and related judge 
 
 ## Phase 0 — protocol paper design
 
+Status: completed
+
 Deliverables:
 
 - act vocabulary
@@ -439,6 +453,8 @@ Output:
 - one parser test plan
 
 ## Phase 1 — runtime proof of concept
+
+Status: completed
 
 Goal:
 
@@ -454,11 +470,14 @@ Work:
   - one tool call
   - `done`
 
-Success criteria:
+Delivered:
 
-- the agent can inspect files, call at least one real pi tool, and continue normally
+- the agent can inspect files, call real pi tools, and continue through pi's normal loop
+- Text Act Format is injected through the `streamFn` seam without replacing the loop
 
 ## Phase 2 — act coverage and loop correctness
+
+Status: completed for the initial act set
 
 Work:
 
@@ -469,13 +488,18 @@ Work:
 - add replay formatting for prior tool calls and tool results
 - add malformed-act correction handling
 
-Success criteria:
+Delivered:
 
-- session traces remain standard pi traces
-- no custom loop is required
-- runtime does not invent missing tool intent
+- support for multiple tool calls
+- support for `ask_user`
+- support for `blocked`
+- completion based on parsed semantic acts rather than transport stop reason
+- replay formatting for prior tool calls and tool results
+- malformed explicit act recovery without guessing missing intent
 
 ## Phase 3 — evaluation harness with Ax
+
+Status: completed for the first live harness
 
 Work:
 
@@ -485,12 +509,16 @@ Work:
 - run fixed non-GEPA baseline evaluations against a small target model
 - add a feedback-capture review queue and import path for later curation
 
-Success criteria:
+Delivered:
 
-- we can measure protocol failures before optimizing prompts
-- we can capture real missing-intent failures from live sessions for future GEPA runs
+- `packages/coding-agent-optimizer/`
+- heuristic + judge-backed scoring
+- seed datasets covering tool use, ask-user, blocked, and tool-grounding cases
+- feedback JSONL import helpers
 
 ## Phase 4 — GEPA artifact generation
+
+Status: completed for the first live flow
 
 Work:
 
@@ -498,12 +526,16 @@ Work:
 - emit per-model artifacts
 - load artifacts into runtime adapter
 
-Success criteria:
+Delivered:
 
-- same runtime, different model artifacts
-- measurable improvement in intent realization
+- per-model artifact generation
+- runtime artifact loading
+- multi-model sequential live runs via `PROMPTFORGE_STUDENT_MODELS`
+- validated artifacts for Kimi and Gemma
 
 ## Phase 5 — refinement
+
+Status: current focus
 
 Work:
 
@@ -512,65 +544,48 @@ Work:
 - optional provider-specific overrides later if needed
 - optional externalization through pi's provider registration API
 
-## Open design options to defer
+## Remaining design options to defer
 
-## 1. Text act grammar
+## 1. Provider-specific overrides
 
-Options:
+Current state:
 
-- XML-ish tags
-- DSRS-style field blocks
-- simple tagged line/block protocol
+- v1 targets the model, not a specific backend route
+- artifacts are stored at the provider/model path that the runtime selects
 
-Recommendation:
+Open question:
 
-- start with the simplest stream-parseable tagged block format
-- avoid strict JSON as the primary act surface
+- whether some models need additional provider-specific tuning beyond model-level artifacts
 
-## 2. `done` representation
+## 2. Feedback capture UX
 
-Options:
+Current state:
 
-- explicit protocol act that lowers to no further tool calls
-- explicit act plus final assistant text
+- low-level feedback queue helpers exist
 
-Recommendation:
+Open question:
 
-- explicit act in protocol, lowered into standard pi completion semantics
+- whether capture should land as a built-in command, extension flow, or both
 
-## 3. `ask_user` representation
+## 3. Compaction-aware rendering
 
-Options:
+Current state:
 
-- custom pi tool
-- protocol act lowered to assistant text
+- the current rendering path works for normal sessions and replayed tool results
 
-Recommendation:
+Open question:
 
-- protocol act lowered to assistant text for v1
-
-## 4. How much of the pi prompt to restructure
-
-Options:
-
-- treat current `buildSystemPrompt()` output as the canonical intent blob
-- gradually refactor it into more structured intent sections
-
-Recommendation:
-
-- use the current built prompt first
-- only extract deeper structure once the adapter works end-to-end
+- how much prompt/render specialization long compacted sessions need
 
 ## Immediate next implementation tasks
 
-When coding starts, the first concrete tasks should be:
+The next concrete tasks are:
 
-1. define the v1 act grammar
-2. add the adapter module scaffold under `packages/coding-agent/src/core/text-act-format/`
-3. wire the adapter into `packages/coding-agent/src/core/sdk.ts`
-4. create parser/lowering unit tests
-5. define the feedback-capture queue format
-6. run a manual end-to-end test with one small model through existing pi tools
+1. persist explicit baseline-vs-optimized scores in live run outputs and artifacts
+2. expand the live dataset beyond the current small seed set
+3. add a user-facing way to capture bad live traces into the feedback queue
+4. improve long-session and compaction-aware rendering
+5. run broader model sweeps and compare per-model artifact quality
 
 ## Summary
 

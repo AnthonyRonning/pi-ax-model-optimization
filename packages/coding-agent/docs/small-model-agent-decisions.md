@@ -1,6 +1,6 @@
 # Small-Model Coding Agent Decisions
 
-Status: discussion snapshot for the planned pi fork.
+Status: implementation snapshot for the PromptForge fork in this branch.
 
 This document records the current architecture and product decisions from the design discussion. It is intentionally focused on the coding-agent layer, not Sage's personal-memory use case.
 
@@ -102,6 +102,12 @@ Decision: GEPA should optimize the translation/adaptation layers, not replace ca
 - The runtime should parse explicit acts from model output instead of trusting native tool calling behavior.
 - This is primarily to remove provider/tool-parser friction, especially for small models.
 
+Implemented shape:
+
+- the model receives a `# Text Act Format` system section plus rendered tools and prior tool results
+- the runtime calls the underlying model with text-only context and no native tool surface
+- model output is parsed back into standard pi assistant text + `toolCall` events
+
 ## Runtime recovery boundary
 
 - If the model makes an explicit tool-use attempt but the act is malformed or partially malformed, the correction/parser layer should try to recover it.
@@ -116,13 +122,21 @@ Decision: GEPA should optimize the translation/adaptation layers, not replace ca
 - Semantic completion should come from explicit agent acts, not from the transport stopping.
 - The runtime should treat unfinished work plus missing terminal intent as interruption/failure, not successful completion.
 
-Acts still need to be formalized, but the working set is:
+The implemented act set is:
 
 - `message`
 - `tool_call`
 - `ask_user`
 - `done`
 - `blocked`
+
+Lowering semantics:
+
+- `message` lowers to assistant text
+- `tool_call` lowers to a normal pi `toolCall` block so the existing loop continues unchanged
+- `ask_user` lowers to assistant text and a normal stop
+- `blocked` lowers to assistant text and a normal stop
+- `done` is semantic termination only; it does not itself create a visible block
 
 ## What the judge should evaluate
 
@@ -220,6 +234,12 @@ Success is:
   - `failed_to_ask_user`
 - Queued feedback is later curated into proper GEPA datasets.
 
+Implemented so far:
+
+- runtime helpers append JSONL records to `.pi/promptforge/feedback/text-act-format.jsonl`
+- records include provider/model, canonical intent, tools, transcript slice, raw output, parsed acts, and failure tag
+- user-facing capture flow is still a follow-up task
+
 ## Known failure taxonomy to drive GEPA
 
 The optimization and evaluation work should track failures such as:
@@ -238,11 +258,30 @@ Important distinction:
 - malformed explicit intent should be handled by parser/correction
 - missing explicit intent should be surfaced to GEPA/evals, not repaired by runtime guessing
 
-## Open items
+## Current implementation snapshot
 
-These are not yet decided and should be defined next:
+What is already working in this branch:
 
-- exact text protocol format for acts
-- replay/tool-result rendering format
-- exact terminal semantics for `done` and `blocked`
-- how canonical pi intent is compiled into model-facing adapters
+- Text Act Format runtime lives under `packages/coding-agent/src/core/text-act-format/`
+- `packages/coding-agent/src/core/sdk.ts` wraps the existing `streamFn` seam instead of replacing pi's loop
+- model-specific artifacts are loaded from `.pi/promptforge/text-act-format/...` and auto-enable the adapter
+- `PI_CODING_AGENT_TEXT_ACT_FORMAT` can explicitly force the adapter on or off
+- optimizer work lives in `packages/coding-agent-optimizer/`
+- live GEPA runs can target one or many student models and write artifacts per model
+
+Validated live artifacts exist for:
+
+- `openrouter/moonshotai/kimi-k2.5`
+- `openrouter/google/gemma-4-31b-it`
+
+The Gemma run produced a stronger instruction set than the seed prompt on the current live dataset.
+
+## Remaining open work
+
+The architecture questions are mostly settled. The main remaining work is:
+
+- baseline-vs-optimized reporting in saved artifacts and run summaries
+- larger and better-curated eval datasets
+- a normal user-facing flow for capturing bad live traces into the feedback queue
+- compaction-aware prompt/render refinement for longer sessions
+- optional provider-specific overrides later if model-level artifacts are not enough
