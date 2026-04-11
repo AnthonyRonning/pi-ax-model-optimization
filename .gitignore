@@ -37,6 +37,10 @@ todo.md
 plans/
 .pi/hf-sessions/
 .pi/hf-sessions-backup/
+.pi/agent/auth.json
+.pi/agent/settings.json
+.pi/agent/sessions/
+.pi/promptforge/text-act-format/openrouter/openrouter/
 packages/coding-agent-optimizer/.pi/
 .claude/
 collect.sh
