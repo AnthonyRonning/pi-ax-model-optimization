@@ -133,7 +133,8 @@ export async function createAgentSessionServices(
 	const agentDir = options.agentDir ?? getAgentDir();
 	const authStorage = options.authStorage ?? AuthStorage.create(join(agentDir, "auth.json"));
 	const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
-	const modelRegistry = options.modelRegistry ?? ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+	const modelsPath = options.agentDir ? join(agentDir, "models.json") : undefined;
+	const modelRegistry = options.modelRegistry ?? ModelRegistry.create(authStorage, modelsPath, cwd);
 	const resourceLoader = new DefaultResourceLoader({
 		...(options.resourceLoaderOptions ?? {}),
 		cwd,

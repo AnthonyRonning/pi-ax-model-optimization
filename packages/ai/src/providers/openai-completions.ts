@@ -368,7 +368,7 @@ function buildParams(model: Model<"openai-completions">, context: Context, optio
 	maybeAddOpenRouterAnthropicCacheControl(model, messages);
 
 	const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
-		model: model.id,
+		model: prefixRequestModelId(model.id, compat.requestModelPrefix),
 		messages,
 		stream: true,
 	};
@@ -429,8 +429,8 @@ function buildParams(model: Model<"openai-completions">, context: Context, optio
 	}
 
 	// OpenRouter provider routing preferences
-	if (model.baseUrl.includes("openrouter.ai") && model.compat?.openRouterRouting) {
-		(params as any).provider = model.compat.openRouterRouting;
+	if (shouldSendOpenRouterProviderOptions(model) && hasRoutingConfig(compat.openRouterRouting)) {
+		(params as any).provider = compat.openRouterRouting;
 	}
 
 	// Vercel AI Gateway provider routing preferences
@@ -445,6 +445,22 @@ function buildParams(model: Model<"openai-completions">, context: Context, optio
 	}
 
 	return params;
+}
+
+function prefixRequestModelId(modelId: string, requestModelPrefix: string): string {
+	if (!requestModelPrefix || modelId.startsWith(requestModelPrefix)) {
+		return modelId;
+	}
+
+	return `${requestModelPrefix}${modelId}`;
+}
+
+function shouldSendOpenRouterProviderOptions(model: Model<"openai-completions">): boolean {
+	return model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai");
+}
+
+function hasRoutingConfig(config: object): boolean {
+	return Object.keys(config).length > 0;
 }
 
 function mapReasoningEffort(
@@ -848,6 +864,7 @@ function detectCompat(model: Model<"openai-completions">): Required<OpenAIComple
 				: "openai",
 		openRouterRouting: {},
 		vercelGatewayRouting: {},
+		requestModelPrefix: "",
 		zaiToolStream: false,
 		supportsStrictMode: true,
 	};
@@ -875,6 +892,7 @@ function getCompat(model: Model<"openai-completions">): Required<OpenAICompletio
 		thinkingFormat: model.compat.thinkingFormat ?? detected.thinkingFormat,
 		openRouterRouting: model.compat.openRouterRouting ?? {},
 		vercelGatewayRouting: model.compat.vercelGatewayRouting ?? detected.vercelGatewayRouting,
+		requestModelPrefix: model.compat.requestModelPrefix ?? detected.requestModelPrefix,
 		zaiToolStream: model.compat.zaiToolStream ?? detected.zaiToolStream,
 		supportsStrictMode: model.compat.supportsStrictMode ?? detected.supportsStrictMode,
 	};

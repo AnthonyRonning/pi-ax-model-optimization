@@ -5,24 +5,38 @@ import type { Api, Context, Model, OpenAICompletionsCompat } from "@mariozechner
 import { getApiProvider } from "@mariozechner/pi-ai";
 import { getOAuthProvider } from "@mariozechner/pi-ai/oauth";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { ENV_AGENT_DIR } from "../src/config.js";
 import { AuthStorage } from "../src/core/auth-storage.js";
 import { clearApiKeyCache, ModelRegistry } from "../src/core/model-registry.js";
 
 describe("ModelRegistry", () => {
 	let tempDir: string;
 	let modelsJsonPath: string;
+	let projectModelsJsonPath: string;
+	let projectDir: string;
 	let authStorage: AuthStorage;
+	let originalAgentDir: string | undefined;
 
 	beforeEach(() => {
 		tempDir = join(tmpdir(), `pi-test-model-registry-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-		mkdirSync(tempDir, { recursive: true });
-		modelsJsonPath = join(tempDir, "models.json");
+		projectDir = join(tempDir, "project");
+		modelsJsonPath = join(tempDir, "agent", "models.json");
+		projectModelsJsonPath = join(projectDir, ".pi", "agent", "models.json");
+		mkdirSync(join(tempDir, "agent"), { recursive: true });
+		mkdirSync(projectDir, { recursive: true });
 		authStorage = AuthStorage.create(join(tempDir, "auth.json"));
+		originalAgentDir = process.env[ENV_AGENT_DIR];
+		process.env[ENV_AGENT_DIR] = join(tempDir, "agent");
 	});
 
 	afterEach(() => {
 		if (tempDir && existsSync(tempDir)) {
 			rmSync(tempDir, { recursive: true });
+		}
+		if (originalAgentDir === undefined) {
+			delete process.env[ENV_AGENT_DIR];
+		} else {
+			process.env[ENV_AGENT_DIR] = originalAgentDir;
 		}
 		clearApiKeyCache();
 	});
@@ -51,6 +65,11 @@ describe("ModelRegistry", () => {
 
 	function writeModelsJson(providers: Record<string, ReturnType<typeof providerConfig>>) {
 		writeFileSync(modelsJsonPath, JSON.stringify({ providers }));
+	}
+
+	function writeProjectModelsJson(providers: Record<string, unknown>) {
+		mkdirSync(join(projectDir, ".pi", "agent"), { recursive: true });
+		writeFileSync(projectModelsJsonPath, JSON.stringify({ providers }));
 	}
 
 	function getModelsForProvider(registry: ModelRegistry, provider: string) {
@@ -188,6 +207,56 @@ describe("ModelRegistry", () => {
 			registry.refresh();
 
 			expect(getModelsForProvider(registry, "anthropic")[0].baseUrl).toBe("https://second-proxy.example.com/v1");
+		});
+	});
+
+	describe("project models.json overlay", () => {
+		test("project-local .pi/agent/models.json overrides global provider config", async () => {
+			const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
+			process.env.OPENROUTER_API_KEY = "ENV_KEY_SHOULD_NOT_WIN";
+
+			try {
+				writeRawModelsJson({
+					openrouter: {
+						baseUrl: "https://global-proxy.example.com/v1",
+						apiKey: "GLOBAL_KEY",
+						compat: {
+							supportsUsageInStreaming: false,
+						},
+					},
+				});
+				writeProjectModelsJson({
+					openrouter: {
+						baseUrl: "https://project-proxy.example.com/v1",
+						compat: {
+							requestModelPrefix: "openrouter/",
+						},
+						modelOverrides: {
+							"anthropic/claude-sonnet-4": {
+								name: "Project Sonnet",
+							},
+						},
+					},
+				});
+				const nestedProjectDir = join(projectDir, "apps", "demo");
+				mkdirSync(nestedProjectDir, { recursive: true });
+
+				const registry = ModelRegistry.create(authStorage, modelsJsonPath, nestedProjectDir);
+				const sonnet = registry.find("openrouter", "anthropic/claude-sonnet-4");
+				const compat = sonnet?.compat as OpenAICompletionsCompat | undefined;
+
+				expect(sonnet?.baseUrl).toBe("https://project-proxy.example.com/v1");
+				expect(sonnet?.name).toBe("Project Sonnet");
+				expect(compat?.supportsUsageInStreaming).toBe(false);
+				expect(compat?.requestModelPrefix).toBe("openrouter/");
+				expect(await registry.getApiKeyForProvider("openrouter")).toBe("GLOBAL_KEY");
+			} finally {
+				if (originalOpenRouterApiKey === undefined) {
+					delete process.env.OPENROUTER_API_KEY;
+				} else {
+					process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+				}
+			}
 		});
 	});
 

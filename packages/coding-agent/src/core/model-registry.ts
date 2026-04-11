@@ -21,8 +21,8 @@ import { registerOAuthProvider, resetOAuthProviders } from "@mariozechner/pi-ai/
 import { type Static, Type } from "@sinclair/typebox";
 import AjvModule from "ajv";
 import { existsSync, readFileSync } from "fs";
-import { join } from "path";
-import { getAgentDir } from "../config.js";
+import { join, resolve } from "path";
+import { findNearestProjectModelsPath, getAgentDir } from "../config.js";
 import type { AuthStorage } from "./auth-storage.js";
 import {
 	clearConfigValueCache,
@@ -110,6 +110,7 @@ const OpenAICompletionsCompatSchema = Type.Object({
 	),
 	openRouterRouting: Type.Optional(OpenRouterRoutingSchema),
 	vercelGatewayRouting: Type.Optional(VercelGatewayRoutingSchema),
+	requestModelPrefix: Type.Optional(Type.String()),
 	supportsStrictMode: Type.Optional(Type.Boolean()),
 });
 
@@ -250,6 +251,110 @@ function mergeCompat(
 	return merged as Model<Api>["compat"];
 }
 
+function mergeProviderOverride(base: ProviderOverride | undefined, override: ProviderOverride): ProviderOverride {
+	return {
+		baseUrl: override.baseUrl ?? base?.baseUrl,
+		compat: mergeCompat(base?.compat, override.compat),
+	};
+}
+
+function mergeModelOverride(base: ModelOverride | undefined, override: ModelOverride): ModelOverride {
+	if (!base) {
+		return {
+			...override,
+			cost: override.cost ? { ...override.cost } : undefined,
+			headers: override.headers ? { ...override.headers } : undefined,
+		};
+	}
+
+	const merged: ModelOverride = {
+		...base,
+		...override,
+	};
+
+	if (base.cost || override.cost) {
+		merged.cost = {
+			...base.cost,
+			...override.cost,
+		};
+	}
+
+	if (base.headers || override.headers) {
+		merged.headers = {
+			...base.headers,
+			...override.headers,
+		};
+	}
+
+	const compat = mergeCompat(base.compat as Model<Api>["compat"], override.compat) as ModelOverride["compat"];
+	if (compat) {
+		merged.compat = compat;
+	}
+
+	return merged;
+}
+
+function mergeProviderOverrides(
+	base: Map<string, ProviderOverride>,
+	overrideMap: Map<string, ProviderOverride>,
+): Map<string, ProviderOverride> {
+	const merged = new Map(base);
+	for (const [providerName, override] of overrideMap.entries()) {
+		merged.set(providerName, mergeProviderOverride(merged.get(providerName), override));
+	}
+	return merged;
+}
+
+function mergeModelOverrides(
+	base: Map<string, Map<string, ModelOverride>>,
+	overrideMap: Map<string, Map<string, ModelOverride>>,
+): Map<string, Map<string, ModelOverride>> {
+	const merged = new Map<string, Map<string, ModelOverride>>();
+
+	for (const [providerName, overrides] of base.entries()) {
+		merged.set(providerName, new Map(overrides));
+	}
+
+	for (const [providerName, overrides] of overrideMap.entries()) {
+		const existing = merged.get(providerName) ?? new Map<string, ModelOverride>();
+		const combined = new Map(existing);
+		for (const [modelId, override] of overrides.entries()) {
+			combined.set(modelId, mergeModelOverride(combined.get(modelId), override));
+		}
+		merged.set(providerName, combined);
+	}
+
+	return merged;
+}
+
+function resolveModelsJsonPaths(modelsJsonPath: string | undefined, cwd?: string): string[] {
+	const globalModelsJsonPath = resolve(join(getAgentDir(), "models.json"));
+	const resolvedModelsJsonPath = modelsJsonPath ? resolve(modelsJsonPath) : undefined;
+	if (cwd === undefined) {
+		return resolvedModelsJsonPath ? [resolvedModelsJsonPath] : [globalModelsJsonPath];
+	}
+
+	const projectModelsJsonPath = findNearestProjectModelsPath(cwd);
+	const resolvedProjectModelsJsonPath = projectModelsJsonPath ? resolve(projectModelsJsonPath) : undefined;
+
+	if (resolvedModelsJsonPath) {
+		if (
+			!resolvedProjectModelsJsonPath ||
+			resolvedModelsJsonPath !== globalModelsJsonPath ||
+			resolvedModelsJsonPath === resolvedProjectModelsJsonPath
+		) {
+			return [resolvedModelsJsonPath];
+		}
+		return [resolvedModelsJsonPath, resolvedProjectModelsJsonPath];
+	}
+
+	if (!resolvedProjectModelsJsonPath || resolvedProjectModelsJsonPath === globalModelsJsonPath) {
+		return [globalModelsJsonPath];
+	}
+
+	return [globalModelsJsonPath, resolvedProjectModelsJsonPath];
+}
+
 /**
  * Deep merge a model override into a model.
  * Handles nested objects (cost, compat) by merging rather than replacing.
@@ -295,17 +400,17 @@ export class ModelRegistry {
 
 	private constructor(
 		readonly authStorage: AuthStorage,
-		private modelsJsonPath: string | undefined,
+		private readonly modelsJsonPaths: string[],
 	) {
 		this.loadModels();
 	}
 
-	static create(authStorage: AuthStorage, modelsJsonPath: string = join(getAgentDir(), "models.json")): ModelRegistry {
-		return new ModelRegistry(authStorage, modelsJsonPath);
+	static create(authStorage: AuthStorage, modelsJsonPath?: string, cwd?: string): ModelRegistry {
+		return new ModelRegistry(authStorage, resolveModelsJsonPaths(modelsJsonPath, cwd));
 	}
 
 	static inMemory(authStorage: AuthStorage): ModelRegistry {
-		return new ModelRegistry(authStorage, undefined);
+		return new ModelRegistry(authStorage, []);
 	}
 
 	/**
@@ -335,17 +440,23 @@ export class ModelRegistry {
 	}
 
 	private loadModels(): void {
-		// Load custom models and overrides from models.json
-		const {
-			models: customModels,
-			overrides,
-			modelOverrides,
-			error,
-		} = this.modelsJsonPath ? this.loadCustomModels(this.modelsJsonPath) : emptyCustomModelsResult();
+		let customModels: Model<Api>[] = [];
+		let overrides = new Map<string, ProviderOverride>();
+		let modelOverrides = new Map<string, Map<string, ModelOverride>>();
+		const errors: string[] = [];
 
-		if (error) {
-			this.loadError = error;
-			// Keep built-in models even if custom models failed to load
+		for (const modelsJsonPath of this.modelsJsonPaths) {
+			const result = this.loadCustomModels(modelsJsonPath);
+			customModels = this.mergeCustomModels(customModels, result.models);
+			overrides = mergeProviderOverrides(overrides, result.overrides);
+			modelOverrides = mergeModelOverrides(modelOverrides, result.modelOverrides);
+			if (result.error) {
+				errors.push(result.error);
+			}
+		}
+
+		if (errors.length > 0) {
+			this.loadError = errors.join("\n\n");
 		}
 
 		const builtInModels = this.loadBuiltInModels(overrides, modelOverrides);
@@ -587,24 +698,42 @@ export class ModelRegistry {
 			authHeader?: boolean;
 		},
 	): void {
-		if (!config.apiKey && !config.headers && !config.authHeader) {
+		if (!config.apiKey && config.headers === undefined && config.authHeader === undefined) {
 			return;
 		}
 
+		const existing = this.providerRequestConfigs.get(providerName);
+		const authHeader = config.authHeader !== undefined ? config.authHeader : existing?.authHeader;
+		const headers =
+			existing?.headers || config.headers
+				? {
+						...existing?.headers,
+						...config.headers,
+					}
+				: undefined;
+
 		this.providerRequestConfigs.set(providerName, {
-			apiKey: config.apiKey,
-			headers: config.headers,
-			authHeader: config.authHeader,
+			apiKey: config.apiKey ?? existing?.apiKey,
+			headers,
+			authHeader,
 		});
 	}
 
 	private storeModelHeaders(providerName: string, modelId: string, headers?: Record<string, string>): void {
 		const key = this.getModelRequestKey(providerName, modelId);
-		if (!headers || Object.keys(headers).length === 0) {
+		if (headers === undefined) {
+			return;
+		}
+
+		if (Object.keys(headers).length === 0) {
 			this.modelRequestHeaders.delete(key);
 			return;
 		}
-		this.modelRequestHeaders.set(key, headers);
+
+		this.modelRequestHeaders.set(key, {
+			...this.modelRequestHeaders.get(key),
+			...headers,
+		});
 	}
 
 	/**
@@ -613,12 +742,15 @@ export class ModelRegistry {
 	async getApiKeyAndHeaders(model: Model<Api>): Promise<ResolvedRequestAuth> {
 		try {
 			const providerConfig = this.providerRequestConfigs.get(model.provider);
-			const apiKeyFromAuthStorage = await this.authStorage.getApiKey(model.provider, { includeFallback: false });
-			const apiKey =
-				apiKeyFromAuthStorage ??
-				(providerConfig?.apiKey
-					? resolveConfigValueOrThrow(providerConfig.apiKey, `API key for provider "${model.provider}"`)
-					: undefined);
+			const apiKeyFromAuthStorage = await this.authStorage.getConfiguredApiKey(model.provider);
+			const apiKeyFromProviderConfig = providerConfig?.apiKey
+				? resolveConfigValueOrThrow(providerConfig.apiKey, `API key for provider "${model.provider}"`)
+				: undefined;
+			const apiKeyFromEnvironment =
+				apiKeyFromAuthStorage === undefined && apiKeyFromProviderConfig === undefined
+					? await this.authStorage.getApiKey(model.provider, { includeFallback: false })
+					: undefined;
+			const apiKey = apiKeyFromAuthStorage ?? apiKeyFromProviderConfig ?? apiKeyFromEnvironment;
 
 			const providerHeaders = resolveHeadersOrThrow(providerConfig?.headers, `provider "${model.provider}"`);
 			const modelHeaders = resolveHeadersOrThrow(
@@ -655,13 +787,17 @@ export class ModelRegistry {
 	 * Get API key for a provider.
 	 */
 	async getApiKeyForProvider(provider: string): Promise<string | undefined> {
-		const apiKey = await this.authStorage.getApiKey(provider, { includeFallback: false });
+		const apiKey = await this.authStorage.getConfiguredApiKey(provider);
 		if (apiKey !== undefined) {
 			return apiKey;
 		}
 
 		const providerApiKey = this.providerRequestConfigs.get(provider)?.apiKey;
-		return providerApiKey ? resolveConfigValueUncached(providerApiKey) : undefined;
+		if (providerApiKey) {
+			return resolveConfigValueUncached(providerApiKey);
+		}
+
+		return this.authStorage.getApiKey(provider, { includeFallback: false });
 	}
 
 	/**

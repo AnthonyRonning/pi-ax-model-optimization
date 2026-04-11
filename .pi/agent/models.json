@@ -1,0 +1,11 @@
+{
+  "providers": {
+    "openrouter": {
+      "baseUrl": "https://llm.tonyhomeapps.com/v1",
+      "apiKey": "LITELLM_API_KEY",
+      "compat": {
+        "requestModelPrefix": "openrouter/"
+      }
+    }
+  }
+}

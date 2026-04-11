@@ -546,4 +546,112 @@ describe("openai-completions tool_choice", () => {
 		expect(params.reasoning).toEqual({ effort: "high" });
 		expect(params.reasoning_effort).toBeUndefined();
 	});
+
+	it("prefixes the outbound model id when compat.requestModelPrefix is set", async () => {
+		const baseModel = getModel("openrouter", "deepseek/deepseek-r1")!;
+		const model = {
+			...baseModel,
+			baseUrl: "https://proxy.example.com/v1",
+			compat: {
+				...baseModel.compat,
+				requestModelPrefix: "openrouter/",
+			},
+		};
+		let payload: unknown;
+
+		await streamSimple(
+			model,
+			{
+				messages: [
+					{
+						role: "user",
+						content: "Hi",
+						timestamp: Date.now(),
+					},
+				],
+			},
+			{
+				apiKey: "test",
+				onPayload: (params: unknown) => {
+					payload = params;
+				},
+			},
+		).result();
+
+		const params = (payload ?? mockState.lastParams) as { model?: string };
+		expect(params.model).toBe("openrouter/deepseek/deepseek-r1");
+	});
+
+	it("does not double-prefix outbound model ids", async () => {
+		const baseModel = getModel("openrouter", "deepseek/deepseek-r1")!;
+		const model = {
+			...baseModel,
+			id: "openrouter/deepseek/deepseek-r1",
+			baseUrl: "https://proxy.example.com/v1",
+			compat: {
+				...baseModel.compat,
+				requestModelPrefix: "openrouter/",
+			},
+		};
+		let payload: unknown;
+
+		await streamSimple(
+			model,
+			{
+				messages: [
+					{
+						role: "user",
+						content: "Hi",
+						timestamp: Date.now(),
+					},
+				],
+			},
+			{
+				apiKey: "test",
+				onPayload: (params: unknown) => {
+					payload = params;
+				},
+			},
+		).result();
+
+		const params = (payload ?? mockState.lastParams) as { model?: string };
+		expect(params.model).toBe("openrouter/deepseek/deepseek-r1");
+	});
+
+	it("sends OpenRouter provider routing for proxied openrouter models", async () => {
+		const baseModel = getModel("openrouter", "deepseek/deepseek-r1")!;
+		const model = {
+			...baseModel,
+			baseUrl: "https://proxy.example.com/v1",
+			compat: {
+				...baseModel.compat,
+				openRouterRouting: {
+					only: ["anthropic"],
+				},
+			},
+		};
+		let payload: unknown;
+
+		await streamSimple(
+			model,
+			{
+				messages: [
+					{
+						role: "user",
+						content: "Hi",
+						timestamp: Date.now(),
+					},
+				],
+			},
+			{
+				apiKey: "test",
+				onPayload: (params: unknown) => {
+					payload = params;
+				},
+			},
+		).result();
+
+		const params = (payload ?? mockState.lastParams) as { provider?: { only?: string[] } };
+		expect(params.provider).toEqual({ only: ["anthropic"] });
+	});
 });

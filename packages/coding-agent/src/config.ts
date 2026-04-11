@@ -215,6 +215,23 @@ export function getAgentDir(): string {
 	return join(homedir(), CONFIG_DIR_NAME, "agent");
 }
 
+/** Find the nearest project-local models.json (e.g., ./<config>/agent/models.json) from cwd upward. */
+export function findNearestProjectModelsPath(cwd: string = process.cwd()): string | undefined {
+	let currentDir = resolve(cwd);
+	while (true) {
+		const candidate = join(currentDir, CONFIG_DIR_NAME, "agent", "models.json");
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+
+		const parentDir = dirname(currentDir);
+		if (parentDir === currentDir) {
+			return undefined;
+		}
+		currentDir = parentDir;
+	}
+}
+
 /** Get path to user's custom themes directory */
 export function getCustomThemesDir(): string {
 	return join(getAgentDir(), "themes");

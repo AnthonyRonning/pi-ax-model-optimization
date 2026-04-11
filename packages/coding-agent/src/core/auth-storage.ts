@@ -413,15 +413,10 @@ export class AuthStorage {
 	}
 
 	/**
-	 * Get API key for a provider.
-	 * Priority:
-	 * 1. Runtime override (CLI --api-key)
-	 * 2. API key from auth.json
-	 * 3. OAuth token from auth.json (auto-refreshed with locking)
-	 * 4. Environment variable
-	 * 5. Fallback resolver (models.json custom providers)
+	 * Get API key for a provider from runtime overrides, auth.json, or OAuth credentials.
+	 * Does not fall back to provider environment variables or the custom fallback resolver.
 	 */
-	async getApiKey(providerId: string, options?: { includeFallback?: boolean }): Promise<string | undefined> {
+	async getConfiguredApiKey(providerId: string): Promise<string | undefined> {
 		// Runtime override takes highest priority
 		const runtimeKey = this.runtimeOverrides.get(providerId);
 		if (runtimeKey) {
@@ -466,10 +461,28 @@ export class AuthStorage {
 					// User can /login to re-authenticate (credentials preserved for retry)
 					return undefined;
 				}
-			} else {
-				// Token not expired, use current access token
-				return provider.getApiKey(cred);
 			}
+
+			// Token not expired, use current access token
+			return provider.getApiKey(cred);
+		}
+
+		return undefined;
+	}
+
+	/**
+	 * Get API key for a provider.
+	 * Priority:
+	 * 1. Runtime override (CLI --api-key)
+	 * 2. API key from auth.json
+	 * 3. OAuth token from auth.json (auto-refreshed with locking)
+	 * 4. Environment variable
+	 * 5. Fallback resolver (models.json custom providers)
+	 */
+	async getApiKey(providerId: string, options?: { includeFallback?: boolean }): Promise<string | undefined> {
+		const configuredKey = await this.getConfiguredApiKey(providerId);
+		if (configuredKey) {
+			return configuredKey;
 		}
 
 		// Fall back to environment variable
