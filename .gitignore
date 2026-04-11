@@ -37,4 +37,6 @@ todo.md
 plans/
 .pi/hf-sessions/
 .pi/hf-sessions-backup/
+packages/coding-agent-optimizer/.pi/
+.claude/
 collect.sh
