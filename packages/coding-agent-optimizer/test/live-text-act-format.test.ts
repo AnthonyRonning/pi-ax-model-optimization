@@ -1,6 +1,7 @@
 import type { AxAIService } from "@ax-llm/ax";
 import { describe, expect, it } from "vitest";
 import { createDefaultLiveTextActFormatDataset } from "../src/live-dataset.js";
+import { resolveLiveStudentApiKey, resolveLiveStudentApiURL } from "../src/live-env.js";
 import { buildLiveTextActFormatSystemPrompt, buildLiveTextActFormatUserPrompt } from "../src/live-prompt.js";
 import { createLiveTextActFormatRunner } from "../src/live-runner.js";
 import {
@@ -137,5 +138,36 @@ describe("live Text Act Format helpers", () => {
 				artifactPath: "/tmp/shared.json",
 			}),
 		).toThrow("PROMPTFORGE_ARTIFACT_PATH can only be used with a single student model.");
+	});
+
+	it("resolves LiteLLM aliases for the student API key and URL", () => {
+		expect(
+			resolveLiveStudentApiKey({
+				LITELLM_API_KEY: "lite-key",
+			}),
+		).toBe("lite-key");
+		expect(
+			resolveLiveStudentApiKey({
+				OPENROUTER_API_KEY: "openrouter-key",
+				LITELLM_API_KEY: "lite-key",
+			}),
+		).toBe("openrouter-key");
+
+		expect(
+			resolveLiveStudentApiURL({
+				OPENROUTER_API_URL: "https://proxy.example.com/v1",
+				LITELLM_API_HOST: "https://llm.example.com",
+			}),
+		).toBe("https://proxy.example.com/v1");
+		expect(
+			resolveLiveStudentApiURL({
+				LITELLM_API_HOST: "https://llm.example.com",
+			}),
+		).toBe("https://llm.example.com/v1");
+		expect(
+			resolveLiveStudentApiURL({
+				LITELLM_API_HOST: "https://llm.example.com/v1",
+			}),
+		).toBe("https://llm.example.com/v1");
 	});
 });

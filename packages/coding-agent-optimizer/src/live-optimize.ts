@@ -2,6 +2,7 @@ import { AxAIAnthropicModel, ai } from "@ax-llm/ax";
 import { writeTextActFormatOptimizerArtifact } from "./artifact.js";
 import { createTextActFormatJudgeMetric } from "./judge.js";
 import { createDefaultLiveTextActFormatDataset } from "./live-dataset.js";
+import { resolveLiveStudentApiKey, resolveLiveStudentApiURL } from "./live-env.js";
 import { createLiveTextActFormatRunner } from "./live-runner.js";
 import { createLiveTextActFormatTargets } from "./live-targets.js";
 import { optimizeTextActFormat } from "./optimize.js";
@@ -40,7 +41,8 @@ const baseArtifact: TextActFormatArtifact = {
 };
 
 async function main(): Promise<void> {
-	const openRouterApiKey = requiredEnv("OPENROUTER_API_KEY");
+	const openRouterApiKey = resolveLiveStudentApiKey();
+	const openRouterApiURL = resolveLiveStudentApiURL();
 	const anthropicApiKey = requiredEnv("ANTHROPIC_APIKEY", "ANTHROPIC_API_KEY");
 	const studentTargets = createLiveTextActFormatTargets({
 		cwd: process.cwd(),
@@ -79,6 +81,7 @@ async function main(): Promise<void> {
 			const studentAI = ai({
 				name: target.provider,
 				apiKey: openRouterApiKey,
+				apiURL: openRouterApiURL,
 				config: {
 					model: target.model,
 					stream: false,
