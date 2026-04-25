@@ -43,6 +43,29 @@ describe("Text Act Format", () => {
 		]);
 	});
 
+	it("recovers nameless tool_call fragments with inline tool syntax", () => {
+		const parsed = parseTextActFormat('<tool_call>\nread path="README.md"\n<tool_call>\nread path="AGENTS.md"');
+
+		expect(parsed.hadExplicitToolAttempt).toBe(true);
+		expect(parsed.usedPlainTextFallback).toBe(false);
+		expect(parsed.acts).toEqual([
+			{
+				type: "tool_call",
+				name: "read",
+				arguments: { path: "README.md" },
+				rawArguments: 'read path="README.md"',
+				recovered: true,
+			},
+			{
+				type: "tool_call",
+				name: "read",
+				arguments: { path: "AGENTS.md" },
+				rawArguments: 'read path="AGENTS.md"',
+				recovered: true,
+			},
+		]);
+	});
+
 	it("renders prior messages into text-native context and disables native tools", () => {
 		const context: Context = {
 			systemPrompt: "Base system prompt.",
@@ -150,6 +173,30 @@ describe("Text Act Format", () => {
 		expect(state.contexts).toHaveLength(1);
 		expect(state.contexts[0]?.tools).toBeUndefined();
 		expect(state.contexts[0]?.systemPrompt).toContain("# Text Act Format");
+	});
+
+	it("lowers recovered nameless tool_call fragments into tool calls", async () => {
+		const { streamFn } = createFauxStreamFn([
+			'<tool_call>\nread path="README.md"\n<tool_call>\nread path="AGENTS.md"',
+		]);
+
+		const stream = await streamTextActFormat(
+			fauxModel,
+			{
+				systemPrompt: "Base system prompt.",
+				tools: [readTool],
+				messages: [{ role: "user", content: "Do you know about the project?", timestamp: 1 }],
+			},
+			undefined,
+			streamFn,
+		);
+
+		const result = await stream.result();
+		expect(result.stopReason).toBe("toolUse");
+		expect(result.content).toEqual([
+			{ type: "toolCall", id: "text_act_format_0", name: "read", arguments: { path: "README.md" } },
+			{ type: "toolCall", id: "text_act_format_1", name: "read", arguments: { path: "AGENTS.md" } },
+		]);
 	});
 
 	it("ignores transport stop reasons when explicit tool acts are present", async () => {

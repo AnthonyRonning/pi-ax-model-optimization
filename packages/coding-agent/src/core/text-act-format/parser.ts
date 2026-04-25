@@ -81,6 +81,19 @@ function parseLineObject(text: string): Record<string, unknown> | undefined {
 	return found ? result : undefined;
 }
 
+function parseKeyValueObject(text: string): Record<string, unknown> | undefined {
+	const result: Record<string, unknown> = {};
+	let found = false;
+	const keyValuePattern = /([A-Za-z_][\w.-]*)\s*=\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s]+)/g;
+
+	for (const match of stripCodeFences(text).matchAll(keyValuePattern)) {
+		result[match[1]] = decodeScalar(match[2] ?? "");
+		found = true;
+	}
+
+	return found ? result : undefined;
+}
+
 function parseToolArguments(
 	rawArguments: string,
 ): { arguments: Record<string, unknown>; recovered: boolean } | undefined {
@@ -115,6 +128,11 @@ function parseToolArguments(
 		return { arguments: lineObject, recovered: true };
 	}
 
+	const keyValueObject = parseKeyValueObject(cleaned);
+	if (keyValueObject) {
+		return { arguments: keyValueObject, recovered: true };
+	}
+
 	return undefined;
 }
 
@@ -146,6 +164,87 @@ function parseRecoveredTrailingToolCall(source: string): TextActFormatAct | unde
 		rawArguments: body.trim(),
 		recovered: true,
 	};
+}
+
+function parseRecoveredNamelessToolCallFragment(source: string): TextActFormatAct | undefined {
+	const cleaned = stripCodeFences(source)
+		.replace(/<\/tool_call>/gi, "")
+		.trim();
+	if (!cleaned) {
+		return undefined;
+	}
+
+	const lines = cleaned
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0);
+	const firstLine = lines[0];
+	if (!firstLine) {
+		return undefined;
+	}
+
+	const toolMatch = /^([A-Za-z_][\w.-]*)\b\s*([\s\S]*)$/.exec(firstLine);
+	if (!toolMatch) {
+		return undefined;
+	}
+
+	const rawArguments = [toolMatch[2] ?? "", ...lines.slice(1)].join("\n").trim();
+	const parsedArguments = rawArguments ? parseToolArguments(rawArguments) : { arguments: {}, recovered: true };
+	if (!parsedArguments) {
+		return undefined;
+	}
+
+	return {
+		type: "tool_call",
+		name: toolMatch[1],
+		arguments: parsedArguments.arguments,
+		rawArguments: cleaned,
+		recovered: true,
+	};
+}
+
+function parseRecoveredNamelessToolCalls(source: string): TextActFormatAct[] | undefined {
+	const recoveredActs: TextActFormatAct[] = [];
+	const namelessToolCallPattern = /<tool_call\b(?![^>]*\bname=)[^>]*>/gi;
+	let lastIndex = 0;
+	let recoveredAnyToolCall = false;
+
+	for (let match = namelessToolCallPattern.exec(source); match; match = namelessToolCallPattern.exec(source)) {
+		const leadingText = source.slice(lastIndex, match.index).trim();
+		if (leadingText && leadingText !== "</tool_call>") {
+			recoveredActs.push(createMessageAct("message", leadingText.replace(/<\/tool_call>/gi, "").trim()));
+		}
+
+		const bodyStart = match.index + match[0].length;
+		const nextToolCallMatch = /<tool_call\b/i.exec(source.slice(bodyStart));
+		const bodyEnd = nextToolCallMatch ? bodyStart + nextToolCallMatch.index : source.length;
+		const body = source.slice(bodyStart, bodyEnd);
+		const recoveredToolCall = parseRecoveredNamelessToolCallFragment(body);
+		if (recoveredToolCall) {
+			recoveredActs.push(recoveredToolCall);
+			recoveredAnyToolCall = true;
+		} else {
+			const fallbackText = source.slice(match.index, bodyEnd).trim();
+			if (fallbackText) {
+				recoveredActs.push(createMessageAct("message", fallbackText));
+			}
+		}
+
+		lastIndex = bodyEnd;
+		namelessToolCallPattern.lastIndex = bodyEnd;
+	}
+
+	const trailingText = source
+		.slice(lastIndex)
+		.replace(/<\/tool_call>/gi, "")
+		.trim();
+	if (trailingText) {
+		recoveredActs.push(createMessageAct("message", trailingText));
+	}
+
+	return recoveredAnyToolCall
+		? recoveredActs.filter((act) => act.type !== "message" || act.text.length > 0)
+		: undefined;
 }
 
 export function parseTextActFormat(rawText: string): TextActFormatParseResult {
@@ -192,8 +291,13 @@ export function parseTextActFormat(rawText: string): TextActFormatParseResult {
 	if (trailingText) {
 		if (trailingText.includes("<tool_call")) {
 			hadExplicitToolAttempt = true;
-			const recoveredToolCall = parseRecoveredTrailingToolCall(trailingText);
-			if (recoveredToolCall) {
+			const recoveredNamelessToolCalls = parseRecoveredNamelessToolCalls(trailingText);
+			const recoveredToolCall = recoveredNamelessToolCalls
+				? undefined
+				: parseRecoveredTrailingToolCall(trailingText);
+			if (recoveredNamelessToolCalls) {
+				acts.push(...recoveredNamelessToolCalls);
+			} else if (recoveredToolCall) {
 				const textBeforeTool = trailingText.slice(0, trailingText.indexOf("<tool_call")).trim();
 				if (textBeforeTool) {
 					acts.push(createMessageAct("message", textBeforeTool));
@@ -228,4 +332,5 @@ export const __textActFormatInternals = {
 	extractBalancedJsonObject,
 	parseToolArguments,
 	parseLineObject,
+	parseKeyValueObject,
 };

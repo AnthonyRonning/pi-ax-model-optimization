@@ -25,7 +25,7 @@ describe("live Text Act Format helpers", () => {
 					{
 						name: "read",
 						description: "Read a file",
-						parameters: { type: "object", properties: { filePath: { type: "string" } } },
+						parameters: { type: "object", properties: { path: { type: "string" } } },
 					},
 				],
 			},
@@ -48,17 +48,31 @@ describe("live Text Act Format helpers", () => {
 			throw new Error("Expected split dataset");
 		}
 		const splitDataset = dataset as {
-			train: ReadonlyArray<{ expectedCompletion?: string; metadata?: Record<string, unknown> }>;
-			validation?: ReadonlyArray<unknown>;
+			train: ReadonlyArray<{
+				expectedCompletion?: string;
+				requiredTools?: readonly string[];
+				forbiddenTools?: readonly string[];
+				metadata?: Record<string, unknown>;
+			}>;
+			validation?: ReadonlyArray<{ expectedCompletion?: string; requiredTools?: readonly string[] }>;
 		};
 
-		expect(splitDataset.train.length).toBeGreaterThanOrEqual(7);
-		expect(splitDataset.validation?.length).toBeGreaterThanOrEqual(3);
+		expect(splitDataset.train.length).toBeGreaterThanOrEqual(25);
+		expect(splitDataset.validation?.length).toBeGreaterThanOrEqual(8);
 		expect(splitDataset.train.some((example) => example.expectedCompletion === "ask_user")).toBe(true);
 		expect(splitDataset.train.some((example) => example.expectedCompletion === "blocked")).toBe(true);
 		expect(
 			splitDataset.train.some((example) => String(example.metadata?.observedFailure ?? "").startsWith("<read ")),
 		).toBe(true);
+		expect(
+			splitDataset.train.some((example) =>
+				String(example.metadata?.observedFailure ?? "").includes('read path="README.md"'),
+			),
+		).toBe(true);
+		for (const toolName of ["read", "bash", "edit", "write"]) {
+			expect(splitDataset.train.some((example) => example.requiredTools?.includes(toolName))).toBe(true);
+		}
+		expect(splitDataset.train.some((example) => example.forbiddenTools?.includes("bash"))).toBe(true);
 	});
 
 	it("treats bare tool-name XML tags as malformed text, not tool calls", () => {
@@ -74,6 +88,29 @@ describe("live Text Act Format helpers", () => {
 		]);
 	});
 
+	it("recovers nameless tool_call fragments with inline tool syntax", () => {
+		const parsed = parseTextActFormat('<tool_call>\nread path="README.md"\n<tool_call>\nread path="AGENTS.md"');
+
+		expect(parsed.hadExplicitToolAttempt).toBe(true);
+		expect(parsed.usedPlainTextFallback).toBe(false);
+		expect(parsed.acts).toEqual([
+			{
+				type: "tool_call",
+				name: "read",
+				arguments: { path: "README.md" },
+				rawArguments: 'read path="README.md"',
+				recovered: true,
+			},
+			{
+				type: "tool_call",
+				name: "read",
+				arguments: { path: "AGENTS.md" },
+				rawArguments: 'read path="AGENTS.md"',
+				recovered: true,
+			},
+		]);
+	});
+
 	it("runs the live runner against a real chat response surface", async () => {
 		const studentAI = {
 			chat: async () =>
@@ -81,7 +118,7 @@ describe("live Text Act Format helpers", () => {
 					results: [
 						{
 							index: 0,
-							content: '<tool_call name="read">{"filePath":"src/index.ts"}</tool_call>',
+							content: '<tool_call name="read">{"path":"src/index.ts"}</tool_call>',
 						},
 					],
 				}) as import("@ax-llm/ax").AxChatResponse,
@@ -98,7 +135,7 @@ describe("live Text Act Format helpers", () => {
 						{
 							name: "read",
 							description: "Read a file",
-							parameters: { type: "object", properties: { filePath: { type: "string" } } },
+							parameters: { type: "object", properties: { path: { type: "string" } } },
 						},
 					],
 				},

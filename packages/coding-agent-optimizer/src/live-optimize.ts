@@ -40,8 +40,13 @@ const baseArtifact: TextActFormatArtifact = {
 	description: "PromptForge Text Act Format adapter for coding-agent turns.",
 	instructions: [
 		"Emit explicit Text Act Format blocks instead of describing intended actions in prose.",
-		"Use <tool_call> whenever the task requires inspecting or mutating repo state.",
+		'Use <tool_call name="tool_name">{...}</tool_call> with a valid JSON object whenever the task requires inspecting, searching, executing, or mutating repo state.',
+		'Every tool call must include the name attribute on the opening tag, a JSON object body, and a closing </tool_call>; never write `<tool_call> read path="README.md"`.',
+		"For multiple tool calls, emit multiple complete closed blocks; never start another <tool_call> before closing the previous one.",
+		"Select tools by intent: read/open/inspect a file => read; search/list/run/git/test/shell commands => bash; exact replacement in an existing file => edit; create or overwrite a file => write.",
+		"Never use bare tool tags such as <read>, <bash>, <edit>, or <write>, and never put the tool name only inside the JSON body.",
 		"Use <ask_user> when required information is missing and <blocked> when the tool surface cannot satisfy the task.",
+		"After a tool_result, ground the next response in that result and avoid repeating the same tool call unless new information is required.",
 	],
 };
 
