@@ -1,7 +1,12 @@
 import type { AxAIService } from "@ax-llm/ax";
 import { describe, expect, it } from "vitest";
 import { createDefaultLiveTextActFormatDataset } from "../src/live-dataset.js";
-import { resolveLiveStudentApiKey, resolveLiveStudentApiURL } from "../src/live-env.js";
+import {
+	buildLiveStudentRequestModel,
+	resolveLiveStudentApiKey,
+	resolveLiveStudentApiURL,
+	shouldUseOpenAICompatibleProxy,
+} from "../src/live-env.js";
 import { buildLiveTextActFormatSystemPrompt, buildLiveTextActFormatUserPrompt } from "../src/live-prompt.js";
 import { createLiveTextActFormatRunner } from "../src/live-runner.js";
 import {
@@ -152,6 +157,13 @@ describe("live Text Act Format helpers", () => {
 				LITELLM_API_KEY: "lite-key",
 			}),
 		).toBe("openrouter-key");
+		expect(
+			resolveLiveStudentApiKey({
+				OPENROUTER_API_KEY: "openrouter-key",
+				LITELLM_API_KEY: "lite-key",
+				OPENROUTER_API_URL: "https://llm.example.com/v1",
+			}),
+		).toBe("lite-key");
 
 		expect(
 			resolveLiveStudentApiURL({
@@ -169,5 +181,15 @@ describe("live Text Act Format helpers", () => {
 				LITELLM_API_HOST: "https://llm.example.com/v1",
 			}),
 		).toBe("https://llm.example.com/v1");
+	});
+
+	it("prefixes student models for OpenAI-compatible LiteLLM proxy routing", () => {
+		expect(shouldUseOpenAICompatibleProxy(undefined)).toBe(false);
+		expect(shouldUseOpenAICompatibleProxy("https://openrouter.ai/api/v1")).toBe(false);
+		expect(shouldUseOpenAICompatibleProxy("https://llm.example.com/v1")).toBe(true);
+
+		expect(buildLiveStudentRequestModel("qwen/qwen3.5-9b", true)).toBe("openrouter/qwen/qwen3.5-9b");
+		expect(buildLiveStudentRequestModel("openrouter/qwen/qwen3.5-9b", true)).toBe("openrouter/qwen/qwen3.5-9b");
+		expect(buildLiveStudentRequestModel("qwen/qwen3.5-9b", false)).toBe("qwen/qwen3.5-9b");
 	});
 });

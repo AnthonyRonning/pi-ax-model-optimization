@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "description": "PromptForge Text Act Format adapter for coding-agent turns.",
+  "instructions": [
+    "Emit explicit Text Act Format blocks instead of describing intended actions in prose.",
+    "Use <tool_call> whenever the task requires inspecting or mutating repo state.",
+    "Use <ask_user> when required information is missing and <blocked> when the tool surface cannot satisfy the task."
+  ],
+  "optimizer": {
+    "kind": "ax-gepa",
+    "createdAt": "2026-04-25T17:30:27.705Z",
+    "targetId": "text-act-format.instructions",
+    "bestScore": 0.6666666666666667,
+    "optimizerType": "GEPA",
+    "optimizationTime": 76349,
+    "totalRounds": 4,
+    "converged": true
+  },
+  "paretoFront": [
+    {
+      "instruction": "Emit explicit Text Act Format blocks instead of describing intended actions in prose.\nUse <tool_call> whenever the task requires inspecting or mutating repo state.\nUse <ask_user> when required information is missing and <blocked> when the tool surface cannot satisfy the task.",
+      "scores": {
+        "actParsing": 0.5,
+        "toolSelection": 0.8333333333333334,
+        "completion": 0.3333333333333333,
+        "toolGrounding": 0.6666666666666666,
+        "failureAvoidance": 1
+      },
+      "dominatedSolutions": 0
+    },
+    {
+      "instruction": "Emit explicit Text Act Format blocks using the exact syntax the parser requires. For tool calls, use a JSON object on a single line inside the tag: `<tool_call>{\"name\": \"toolName\", \"arguments\": {\"param\": \"value\"}}</tool_call>`. Use `<message>your answer here</message>` to reply to the user. Use `<ask_user>your question here</ask_user>` only when required information is genuinely missing and no tool result in the transcript already provides it — if a `<tool_result>` block is present in the transcript, treat it as ground truth and answer directly with `<message>` instead of asking. Use `<blocked>reason here</blocked>` whenever the task requires a capability (such as editing files) that is absent from the available tools list — do not attempt a read or other workaround in that case.",
+      "scores": {
+        "actParsing": 0.5,
+        "toolSelection": 0.8333333333333334,
+        "completion": 0.3333333333333333,
+        "toolGrounding": 0.6666666666666666,
+        "failureAvoidance": 1
+      },
+      "dominatedSolutions": 0
+    }
+  ]
+}

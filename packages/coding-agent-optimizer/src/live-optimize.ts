@@ -1,8 +1,13 @@
-import { AxAIAnthropicModel, ai } from "@ax-llm/ax";
+import { AxAIAnthropicModel, type AxAIOpenAIModel, ai } from "@ax-llm/ax";
 import { writeTextActFormatOptimizerArtifact } from "./artifact.js";
 import { createTextActFormatJudgeMetric } from "./judge.js";
 import { createDefaultLiveTextActFormatDataset } from "./live-dataset.js";
-import { resolveLiveStudentApiKey, resolveLiveStudentApiURL } from "./live-env.js";
+import {
+	buildLiveStudentRequestModel,
+	resolveLiveStudentApiKey,
+	resolveLiveStudentApiURL,
+	shouldUseOpenAICompatibleProxy,
+} from "./live-env.js";
 import { createLiveTextActFormatRunner } from "./live-runner.js";
 import { createLiveTextActFormatTargets } from "./live-targets.js";
 import { optimizeTextActFormat } from "./optimize.js";
@@ -40,9 +45,38 @@ const baseArtifact: TextActFormatArtifact = {
 	],
 };
 
+function createStudentAI(options: {
+	useOpenAICompatibleProxy: boolean;
+	apiKey: string;
+	apiURL: string | undefined;
+	model: string;
+}) {
+	const config = {
+		model: options.model,
+		stream: false,
+		temperature: 0,
+	};
+
+	if (options.useOpenAICompatibleProxy) {
+		return ai({
+			name: "openai",
+			apiKey: options.apiKey,
+			apiURL: options.apiURL,
+			config: { ...config, model: options.model as AxAIOpenAIModel },
+		});
+	}
+
+	return ai({
+		name: "openrouter",
+		apiKey: options.apiKey,
+		config,
+	});
+}
+
 async function main(): Promise<void> {
 	const openRouterApiKey = resolveLiveStudentApiKey();
 	const openRouterApiURL = resolveLiveStudentApiURL();
+	const useOpenAICompatibleProxy = shouldUseOpenAICompatibleProxy(openRouterApiURL);
 	const anthropicApiKey = requiredEnv("ANTHROPIC_APIKEY", "ANTHROPIC_API_KEY");
 	const studentTargets = createLiveTextActFormatTargets({
 		cwd: process.cwd(),
@@ -78,15 +112,12 @@ async function main(): Promise<void> {
 
 	for (const target of studentTargets) {
 		try {
-			const studentAI = ai({
-				name: target.provider,
+			const requestModel = buildLiveStudentRequestModel(target.model, useOpenAICompatibleProxy);
+			const studentAI = createStudentAI({
+				useOpenAICompatibleProxy,
 				apiKey: openRouterApiKey,
 				apiURL: openRouterApiURL,
-				config: {
-					model: target.model,
-					stream: false,
-					temperature: 0,
-				},
+				model: requestModel,
 			});
 
 			const result = await optimizeTextActFormat({
@@ -96,7 +127,7 @@ async function main(): Promise<void> {
 				baseArtifact,
 				runner: createLiveTextActFormatRunner({
 					studentAI,
-					model: target.model,
+					model: requestModel,
 					temperature: 0,
 					maxTokens: 1024,
 				}),

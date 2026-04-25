@@ -15,7 +15,10 @@ function ensureV1Path(urlOrHost: string): string {
 }
 
 export function resolveLiveStudentApiKey(env: Record<string, string | undefined> = process.env): string {
-	const value = firstDefinedEnv(env, ["OPENROUTER_API_KEY", "LITELLM_API_KEY"]);
+	const apiURL = resolveLiveStudentApiURL(env);
+	const value = shouldUseOpenAICompatibleProxy(apiURL)
+		? firstDefinedEnv(env, ["LITELLM_API_KEY", "OPENROUTER_API_KEY"])
+		: firstDefinedEnv(env, ["OPENROUTER_API_KEY", "LITELLM_API_KEY"]);
 	if (!value) {
 		throw new Error("Missing required environment variable: OPENROUTER_API_KEY (or LITELLM_API_KEY)");
 	}
@@ -31,4 +34,16 @@ export function resolveLiveStudentApiURL(env: Record<string, string | undefined>
 
 	const liteLlmHost = firstDefinedEnv(env, ["LITELLM_API_HOST"]);
 	return liteLlmHost ? ensureV1Path(liteLlmHost) : undefined;
+}
+
+export function shouldUseOpenAICompatibleProxy(apiURL: string | undefined): boolean {
+	return apiURL !== undefined && !apiURL.includes("openrouter.ai");
+}
+
+export function buildLiveStudentRequestModel(model: string, useOpenAICompatibleProxy: boolean): string {
+	if (!useOpenAICompatibleProxy || model.startsWith("openrouter/")) {
+		return model;
+	}
+
+	return `openrouter/${model}`;
 }
