@@ -1,15 +1,3 @@
-<!-- OSS_WEEKEND_START -->
-# 🏖️ OSS Weekend
-
-**Issue tracker reopens Monday, April 13, 2026.**
-
-OSS weekend runs Thursday, April 2, 2026 through Monday, April 13, 2026. New issues and PRs from unapproved contributors are auto-closed during this time. Approved contributors can still open issues and PRs if something is genuinely urgent, but please keep that to pressing matters only. For support, join [Discord](https://discord.com/invite/3cU7Bz4UPx).
-
-> _Current focus: at the moment i'm deep in refactoring internals, and need to focus._
-<!-- OSS_WEEKEND_END -->
-
----
-
 # PromptForge / Text Act Format Experiment
 
 This branch is an experiment on top of the pi monorepo. The goal is to test whether a pi-based coding agent can make tool-fragile or format-sensitive models behave more like dependable coding agents by replacing provider-native tool calling with a text-native act format and optimizing the adapter prompt with GEPA.
@@ -257,7 +245,15 @@ PROMPTFORGE_MINIBATCH_SIZE=3
 PROMPTFORGE_EARLY_STOPPING_TRIALS=2
 ```
 
-When routing through LiteLLM, the optimizer can use OpenAI-compatible proxy mode and prefix request model IDs such as:
+The same script can target one model or several models and writes model-scoped artifacts. For example, rerunning the Qwen artifact from the repo root used this shape:
+
+```bash
+PROMPTFORGE_STUDENT_MODEL="qwen/qwen3.5-9b" \
+PROMPTFORGE_ARTIFACT_PATH="$PWD/.pi/promptforge/text-act-format/openrouter/qwen/qwen3.5-9b.json" \
+npm --prefix packages/coding-agent-optimizer run optimize:live
+```
+
+When routing through an OpenAI-compatible proxy, the optimizer can prefix request model IDs such as:
 
 ```text
 openrouter/qwen/qwen3.5-9b
@@ -332,15 +328,16 @@ The user-facing capture flow is still future work.
 
 ## LiteLLM / Langfuse routing
 
-This branch also experiments with routing OpenRouter models through a LiteLLM-compatible proxy for tracing.
+This branch also proves that OpenRouter-backed models can be routed through an OpenAI-compatible LiteLLM proxy. This was not the core research goal, but it is useful because a local LiteLLM proxy can forward requests to OpenRouter while Langfuse captures complete traces.
 
-The sustainable approach is:
+That trace collection matters for this experiment:
 
-- keep normal pi model IDs where possible
-- discover project-local `.pi/agent/models.json`
-- let provider config transform the outbound request model ID
-- avoid requiring ad hoc runtime flags like `PI_CODING_AGENT_DIR`
-- avoid duplicating random user-facing model aliases
+- failed model outputs can be copied directly into parser regressions
+- repeated malformed act patterns can be curated into GEPA datasets
+- optimized artifacts can be compared against raw baseline behavior
+- request/response history is available without adding special tracing code to pi's runtime loop
+
+This README intentionally does not document how to set up the proxy, credentials, or Langfuse. The important finding is that the branch supports this route without making users select random alias models or pass ad hoc agent-dir flags. Internally, pi can keep normal model IDs and transform only the outbound request model where needed.
 
 Relevant files:
 
@@ -349,25 +346,37 @@ Relevant files:
 - `packages/coding-agent/src/core/model-registry.ts`
 - `packages/ai/src/providers/openai-completions.ts`
 
-## Validation commands used during the experiment
+## Command quick reference
 
-Root validation:
+From the repo root:
 
 ```bash
+npm install
 npm run check
+./pi-test.sh
 ```
 
-Targeted runtime tests:
+Force Text Act Format on or off for a local run:
+
+```bash
+PI_CODING_AGENT_TEXT_ACT_FORMAT=1 ./pi-test.sh
+PI_CODING_AGENT_TEXT_ACT_FORMAT=0 ./pi-test.sh
+```
+
+Run live optimization:
+
+```bash
+cd packages/coding-agent-optimizer
+npm run optimize:live
+```
+
+Run the main targeted tests for this experiment:
 
 ```bash
 cd packages/coding-agent
 ../../node_modules/.bin/tsx ../../node_modules/vitest/dist/cli.js --run test/text-act-format.test.ts
-```
 
-Targeted optimizer tests:
-
-```bash
-cd packages/coding-agent-optimizer
+cd ../coding-agent-optimizer
 ../../node_modules/.bin/tsx ../../node_modules/vitest/dist/cli.js --run test/live-text-act-format.test.ts
 ../../node_modules/.bin/tsx ../../node_modules/vitest/dist/cli.js --run test/text-act-format-optimizer.test.ts
 ```
