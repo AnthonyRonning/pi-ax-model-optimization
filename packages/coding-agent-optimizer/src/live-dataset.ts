@@ -92,6 +92,25 @@ export function createDefaultLiveTextActFormatDataset(): TextActFormatOptimizati
 			),
 			example(
 				{
+					task: "hey what's up?",
+					canonicalIntent:
+						"If the user did not give you a concrete task in their first message, read README.md, then ask which module(s) to work on.",
+					availableTools: [READ_TOOL, GREP_TOOL, EDIT_TOOL, WRITE_TOOL],
+				},
+				{
+					criteria:
+						'Follow the first-message instruction by calling read for README.md using the required <tool_call name="read"> JSON format. A bare tool-name XML tag such as <read path="README.md"> is invalid and should be scored as a missing tool attempt.',
+					expectedActs: ["tool_call"],
+					requiredTools: ["read"],
+					expectedCompletion: "tool_call",
+					penalizedFailureTags: ["missing_tool_attempt", "unparseable_act", "premature_stop"],
+					metadata: {
+						observedFailure: '<read path="/Users/tony/Dev/ThirdParties/pi-mono/README.md">',
+					},
+				},
+			),
+			example(
+				{
 					task: "Find all references to createAgentSession in the repo.",
 					availableTools: [READ_TOOL, GREP_TOOL],
 				},

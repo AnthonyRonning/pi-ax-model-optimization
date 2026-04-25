@@ -14,6 +14,7 @@ import {
 	DEFAULT_LIVE_STUDENT_MODEL,
 	DEFAULT_LIVE_STUDENT_PROVIDER,
 } from "../src/live-targets.js";
+import { parseTextActFormat } from "../src/parser.js";
 
 describe("live Text Act Format helpers", () => {
 	it("renders a system prompt with tools and artifact hints", () => {
@@ -47,14 +48,30 @@ describe("live Text Act Format helpers", () => {
 			throw new Error("Expected split dataset");
 		}
 		const splitDataset = dataset as {
-			train: ReadonlyArray<{ expectedCompletion?: string }>;
+			train: ReadonlyArray<{ expectedCompletion?: string; metadata?: Record<string, unknown> }>;
 			validation?: ReadonlyArray<unknown>;
 		};
 
-		expect(splitDataset.train.length).toBeGreaterThanOrEqual(6);
+		expect(splitDataset.train.length).toBeGreaterThanOrEqual(7);
 		expect(splitDataset.validation?.length).toBeGreaterThanOrEqual(3);
 		expect(splitDataset.train.some((example) => example.expectedCompletion === "ask_user")).toBe(true);
 		expect(splitDataset.train.some((example) => example.expectedCompletion === "blocked")).toBe(true);
+		expect(
+			splitDataset.train.some((example) => String(example.metadata?.observedFailure ?? "").startsWith("<read ")),
+		).toBe(true);
+	});
+
+	it("treats bare tool-name XML tags as malformed text, not tool calls", () => {
+		const parsed = parseTextActFormat('<read path="/Users/tony/Dev/ThirdParties/pi-mono/README.md">');
+
+		expect(parsed.usedPlainTextFallback).toBe(true);
+		expect(parsed.hadExplicitToolAttempt).toBe(false);
+		expect(parsed.acts).toEqual([
+			{
+				type: "message",
+				text: '<read path="/Users/tony/Dev/ThirdParties/pi-mono/README.md">',
+			},
+		]);
 	});
 
 	it("runs the live runner against a real chat response surface", async () => {
